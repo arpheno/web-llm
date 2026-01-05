@@ -1,481 +1,602 @@
-<div align="center" id="top">
+# WebLLM Input Logprobs Feature
 
-# WebLLM
-[![NPM Package](https://img.shields.io/badge/NPM_Package-Published-cc3534)](https://www.npmjs.com/package/@mlc-ai/web-llm)
-[!["WebLLM Chat Deployed"](https://img.shields.io/badge/WebLLM_Chat-Deployed-%2332a852)](https://chat.webllm.ai/)
-[![Join Discord](https://img.shields.io/badge/Join-Discord-7289DA?logo=discord&logoColor=white)](https://discord.gg/9Xpy2HGBuD)
-[![Related Repository: WebLLM Chat](https://img.shields.io/badge/Related_Repo-WebLLM_Chat-fafbfc?logo=github)](https://github.com/mlc-ai/web-llm-chat/)
-[![Related Repository: MLC LLM](https://img.shields.io/badge/Related_Repo-MLC_LLM-fafbfc?logo=github)](https://github.com/mlc-ai/mlc-llm/)
+This project extends [WebLLM](https://github.com/mlc-ai/web-llm) to support **input token logprobs** - the ability to compute log-probabilities for every token in the input prompt, not just generated tokens.
 
-**High-Performance In-Browser LLM Inference Engine.**
+## Why This Matters
 
+Standard LLM inference is optimized for **generation**: during the "prefill" phase, only the logits for the *last* input token are computed (since that's all you need to predict the next token). However, for applications like:
 
-[Documentation](https://webllm.mlc.ai/docs/) | [Blogpost](https://blog.mlc.ai/2024/06/13/webllm-a-high-performance-in-browser-llm-inference-engine) | [Paper](https://arxiv.org/abs/2412.15803) | [Examples](examples)
+- **Perplexity scoring** (measuring text difficulty/fluency)
+- **Speed-reading annotation** (highlighting unpredictable words)
+- **Uncertainty detection** (finding parts where the model is "surprised")
+- **Client-side content analysis** (privacy-preserving text evaluation)
 
-</div>
+...you need logprobs for **all** input tokens.
 
-## Overview
-WebLLM is a high-performance in-browser LLM inference engine that brings language model inference directly onto web browsers with hardware acceleration.
-Everything runs inside the browser with no server support and is accelerated with WebGPU.
+## Architecture Overview
 
-WebLLM is **fully compatible with [OpenAI API](https://platform.openai.com/docs/api-reference/chat).**
-That is, you can use the same OpenAI API on **any open source models** locally, with functionalities
-including streaming, JSON-mode, function-calling (WIP), etc.
-
-We can bring a lot of fun opportunities to build AI assistants for everyone and enable privacy while enjoying GPU acceleration.
-
-You can use WebLLM as a base [npm package](https://www.npmjs.com/package/@mlc-ai/web-llm) and build your own web application on top of it by following the examples below. This project is a companion project of [MLC LLM](https://github.com/mlc-ai/mlc-llm), which enables universal deployment of LLM across hardware environments.
-
-<div align="center">
-
-**[Check out WebLLM Chat to try it out!](https://chat.webllm.ai/)**
-
-</div>
-
-## Key Features
-- **In-Browser Inference**: WebLLM is a high-performance, in-browser language model inference engine that leverages WebGPU for hardware acceleration, enabling powerful LLM operations directly within web browsers without server-side processing.
-
-- [**Full OpenAI API Compatibility**](#full-openai-compatibility): Seamlessly integrate your app with WebLLM using OpenAI API with functionalities such as streaming, JSON-mode, logit-level control, seeding, and more.
-
-- **Structured JSON Generation**: WebLLM supports state-of-the-art JSON mode structured generation, implemented in the WebAssembly portion of the model library for optimal performance. Check [WebLLM JSON Playground](https://huggingface.co/spaces/mlc-ai/WebLLM-JSON-Playground) on HuggingFace to try generating JSON output with custom JSON schema.
-
-- [**Extensive Model Support**](#built-in-models): WebLLM natively supports a range of models including Llama 3, Phi 3, Gemma, Mistral, Qwen(通义千问), and many others, making it versatile for various AI tasks. For the complete supported model list, check [MLC Models](https://mlc.ai/models).
-
-- [**Custom Model Integration**](#custom-models): Easily integrate and deploy custom models in MLC format, allowing you to adapt WebLLM to specific needs and scenarios, enhancing flexibility in model deployment.
-
-- **Plug-and-Play Integration**: Easily integrate WebLLM into your projects using package managers like NPM and Yarn, or directly via CDN, complete with comprehensive [examples](./examples/) and a modular design for connecting with UI components.
-
-- **Streaming & Real-Time Interactions**: Supports streaming chat completions, allowing real-time output generation which enhances interactive applications like chatbots and virtual assistants.
-
-- **Web Worker & Service Worker Support**: Optimize UI performance and manage the lifecycle of models efficiently by offloading computations to separate worker threads or service workers.
-
-- **Chrome Extension Support**: Extend the functionality of web browsers through custom Chrome extensions using WebLLM, with examples available for building both basic and advanced extensions.
-
-## Built-in Models
-
-Check the complete list of available models on [MLC Models](https://mlc.ai/models). WebLLM supports a subset of these available models and the list can be accessed at [`prebuiltAppConfig.model_list`](https://github.com/mlc-ai/web-llm/blob/main/src/config.ts#L293).
-
-Here are the primary families of models currently supported:
-
-- **Llama**: Llama 3, Llama 2, Hermes-2-Pro-Llama-3
-- **Phi**: Phi 3, Phi 2, Phi 1.5
-- **Gemma**: Gemma-2B
-- **Mistral**: Mistral-7B-v0.3, Hermes-2-Pro-Mistral-7B, NeuralHermes-2.5-Mistral-7B, OpenHermes-2.5-Mistral-7B
-- **Qwen (通义千问)**: Qwen2 0.5B, 1.5B, 7B
-
-If you need more models, [request a new model via opening an issue](https://github.com/mlc-ai/web-llm/issues/new/choose) or check [Custom Models](#custom-models) for how to compile and use your own models with WebLLM.
-
-## Jumpstart with Examples
-
-Learn how to use WebLLM to integrate large language models into your application and generate chat completions through this simple Chatbot example: 
-
-[![Example Chatbot on JSFiddle](https://img.shields.io/badge/Example-JSFiddle-blue?logo=jsfiddle&logoColor=white)](https://jsfiddle.net/neetnestor/4nmgvsa2/)
-[![Example Chatbot on Codepen](https://img.shields.io/badge/Example-Codepen-gainsboro?logo=codepen)](https://codepen.io/neetnestor/pen/vYwgZaG)
-
-For an advanced example of a larger, more complicated project, check [WebLLM Chat](https://github.com/mlc-ai/web-llm-chat/blob/main/app/client/webllm.ts).
-
-More examples for different use cases are available in the [examples](./examples/) folder.
-
-## Get Started
-
-WebLLM offers a minimalist and modular interface to access the chatbot in the browser.
-The package is designed in a modular way to hook to any of the UI components.
-
-### Installation
-
-#### Package Manager
-
-```sh
-# npm
-npm install @mlc-ai/web-llm
-# yarn
-yarn add @mlc-ai/web-llm
-# or pnpm
-pnpm install @mlc-ai/web-llm
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         React Demo App                              │
+│  (web-llm/examples/react-logit-demo)                                │
+│                                                                     │
+│  Uses: return_input_logprobs: true in chat.completions.create()     │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        WebLLM TypeScript                            │
+│  (web-llm/src/)                                                     │
+│                                                                     │
+│  Modified files:                                                    │
+│  - src/llm_chat.ts: Calls prefill_all_logits when available         │
+│  - src/engine.ts: Passes return_input_logprobs to pipeline          │
+│  - src/config.ts: Adds return_input_logprobs option                 │
+│  - src/openai_api_protocols/chat_completion.ts: Types for response  │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Custom WASM Runtime                            │
+│  (TinyLlama-1.1B.wasm with prefill_all_logits)                      │
+│                                                                     │
+│  Built from: mlc-llm/web/emcc/mlc_wasm_runtime_minimal.cc           │
+│  Uses:       mlc-llm/python/mlc_llm/model/llama/llama_model.py      │
+│              (defines prefill_all_logits TVM function)              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Then import the module in your code.
+## Key Components
 
-```typescript
-// Import everything
-import * as webllm from "@mlc-ai/web-llm";
-// Or only import what you need
-import { CreateMLCEngine } from "@mlc-ai/web-llm";
+### 1. Model-Level: `prefill_all_logits` Function
+
+In `mlc-llm/python/mlc_llm/model/llama/llama_model.py`, we added a new function to the Llama model:
+
+```python
+def prefill_all_logits(self, input_embed: Tensor, paged_kv_cache: PagedKVCache):
+    """Return logits for ALL input tokens, not just the last one."""
+    # Standard forward pass through transformer layers
+    hidden_states = self.model(input_embed, paged_kv_cache)
+    # Apply LM head to ALL hidden states (not just [-1])
+    logits = self.lm_head(hidden_states)
+    return logits
 ```
 
-#### CDN Delivery
+This function is exported in the model's `exports` dict so it becomes available as a TVM PackedFunc in the compiled WASM.
 
-Thanks to [jsdelivr.com](https://www.jsdelivr.com/package/npm/@mlc-ai/web-llm), WebLLM can be imported directly through URL and work out-of-the-box on cloud development platforms like [jsfiddle.net](https://jsfiddle.net/), [Codepen.io](https://codepen.io/), and [Scribbler](https://scribbler.live):
+### 2. WASM Runtime: Minimal Build
 
-```javascript
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
-```
-It can also be dynamically imported as:
-```javascript
-const webllm = await import ("https://esm.run/@mlc-ai/web-llm");
-```
+We created `mlc-llm/web/emcc/mlc_wasm_runtime_minimal.cc` - a lightweight runtime that includes only:
 
-### Create MLCEngine
+- TVM runtime core (`wasm_runtime.cc`)
+- UTF-8 encoding support (`encoding.cc`)
 
-Most operations in WebLLM are invoked through the `MLCEngine` interface. You can create an `MLCEngine` instance and loading the model by calling the `CreateMLCEngine()` factory function.
+This avoids linking the full MLC-LLM serve engine (which has C++ dependencies on tokenizers, xgrammar, etc. that don't work in browsers).
 
-(Note that loading models requires downloading and it can take a significant amount of time for the very first run without caching previously. You should properly handle this asynchronous call.)
-
-```typescript
-import { CreateMLCEngine } from "@mlc-ai/web-llm";
-
-// Callback function to update model loading progress
-const initProgressCallback = (initProgress) => {
-  console.log(initProgress);
-}
-const selectedModel = "Llama-3.1-8B-Instruct-q4f32_1-MLC";
-
-const engine = await CreateMLCEngine(
-  selectedModel,
-  { initProgressCallback: initProgressCallback }, // engineConfig
-);
+Built via:
+```bash
+cd mlc-llm/web
+make minimal  # Produces dist/wasm/mlc_wasm_runtime_minimal.bc
 ```
 
-Under the hood, this factory function does the following steps for first creating an engine instance (synchronous) and then loading the model (asynchronous). You can also do them separately in your application.
+### 3. Model Compilation
 
-```typescript
-import { MLCEngine } from "@mlc-ai/web-llm";
-
-// This is a synchronous call that returns immediately
-const engine = new MLCEngine({
-  initProgressCallback: initProgressCallback
-});
-
-// This is an asynchronous call and can take a long time to finish
-await engine.reload(selectedModel);
-```
-
-### Chat Completion
-After successfully initializing the engine, you can now invoke chat completions using OpenAI style chat APIs through the `engine.chat.completions` interface. For the full list of parameters and their descriptions, check [section below](#full-openai-compatibility) and [OpenAI API reference](https://platform.openai.com/docs/api-reference/chat/create).
-
-(Note: The `model` parameter is not supported and will be ignored here. Instead, call `CreateMLCEngine(model)` or `engine.reload(model)` instead as shown in the [Create MLCEngine](#create-mlcengine) above.)
-
-
-```typescript
-const messages = [
-  { role: "system", content: "You are a helpful AI assistant." },
-  { role: "user", content: "Hello!" },
-]
-
-const reply = await engine.chat.completions.create({
-  messages,
-});
-console.log(reply.choices[0].message);
-console.log(reply.usage);
-```
-
-### Streaming
-
-WebLLM also supports streaming chat completion generating. To use it, simply pass `stream: true` to the `engine.chat.completions.create` call.
-
-```typescript
-const messages = [
-  { role: "system", content: "You are a helpful AI assistant." },
-  { role: "user", content: "Hello!" },
-]
-
-// Chunks is an AsyncGenerator object
-const chunks = await engine.chat.completions.create({
-  messages,
-  temperature: 1,
-  stream: true, // <-- Enable streaming
-  stream_options: { include_usage: true },
-});
-
-let reply = "";
-for await (const chunk of chunks) {
-  reply += chunk.choices[0]?.delta.content || "";
-  console.log(reply);
-  if (chunk.usage) {
-    console.log(chunk.usage); // only last chunk has usage
-  }
-}
-
-const fullReply = await engine.getMessage();
-console.log(fullReply);
-```
-
-## Advanced Usage
-
-### Using Workers
-
-You can put the heavy computation in a worker script to optimize your application performance. To do so, you need to:
-
-1. Create a handler in the worker thread that communicates with the frontend while handling the requests.
-2. Create a Worker Engine in your main application, which under the hood sends messages to the handler in the worker thread.
-
-For detailed implementations of different kinds of Workers, check the following sections.
-
-#### Dedicated Web Worker
-
-WebLLM comes with API support for WebWorker so you can hook
-the generation process into a separate worker thread so that
-the computing in the worker thread won't disrupt the UI.
-
-We create a handler in the worker thread that communicates with the frontend while handling the requests.
-
-```typescript
-// worker.ts
-import { WebWorkerMLCEngineHandler } from "@mlc-ai/web-llm";
-
-// A handler that resides in the worker thread
-const handler = new WebWorkerMLCEngineHandler();
-self.onmessage = (msg: MessageEvent) => {
-  handler.onmessage(msg);
-};
-```
-
-In the main logic, we create a `WebWorkerMLCEngine` that
-implements the same `MLCEngineInterface`. The rest of the logic remains the same.
-
-```typescript
-// main.ts
-import { CreateWebWorkerMLCEngine } from "@mlc-ai/web-llm";
-
-async function main() {
-  // Use a WebWorkerMLCEngine instead of MLCEngine here
-  const engine = await CreateWebWorkerMLCEngine(
-    new Worker(
-      new URL("./worker.ts", import.meta.url), 
-      {
-        type: "module",
-      }
-    ),
-    selectedModel,
-    { initProgressCallback }, // engineConfig
-  );
-
-  // everything else remains the same
-}
-```
-
-### Use Service Worker
-
-WebLLM comes with API support for ServiceWorker so you can hook the generation process
-into a service worker to avoid reloading the model in every page visit and optimize
-your application's offline experience.
-
-(Note, Service Worker's life cycle is managed by the browser and can be killed any time without notifying the webapp. `ServiceWorkerMLCEngine` will try to keep the service worker thread alive by periodically sending heartbeat events, but your application should also include proper error handling. Check `keepAliveMs` and `missedHeatbeat` in [`ServiceWorkerMLCEngine`](https://github.com/mlc-ai/web-llm/blob/main/src/service_worker.ts#L234) for more details.)
-
-We create a handler in the worker thread that communicates with the frontend while handling the requests.
-
-
-```typescript
-// sw.ts
-import { ServiceWorkerMLCEngineHandler } from "@mlc-ai/web-llm";
-
-let handler: ServiceWorkerMLCEngineHandler;
-
-self.addEventListener("activate", function (event) {
-  handler = new ServiceWorkerMLCEngineHandler();
-  console.log("Service Worker is ready");
-});
-```
-
-Then in the main logic, we register the service worker and create the engine using
-`CreateServiceWorkerMLCEngine` function. The rest of the logic remains the same.
-
-```typescript
-// main.ts
-import { MLCEngineInterface, CreateServiceWorkerMLCEngine } from "@mlc-ai/web-llm";
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register(
-    new URL("sw.ts", import.meta.url),  // worker script
-    { type: "module" },
-  );
-}
-
-const engine: MLCEngineInterface =
-  await CreateServiceWorkerMLCEngine(
-    selectedModel,
-    { initProgressCallback }, // engineConfig
-  );
-```
-
-You can find a complete example on how to run WebLLM in service worker in [examples/service-worker](examples/service-worker/).
-
-### Chrome Extension
-You can also find examples of building Chrome extension with WebLLM in [examples/chrome-extension](examples/chrome-extension/) and [examples/chrome-extension-webgpu-service-worker](examples/chrome-extension-webgpu-service-worker/). The latter one leverages service worker, so the extension is persistent in the background. Additionally, you can explore another full project of a Chrome extension, WebLLM Assistant, which leverages WebLLM [here](https://github.com/mlc-ai/web-llm-assistant).
-
-## Full OpenAI Compatibility
-WebLLM is designed to be fully compatible with [OpenAI API](https://platform.openai.com/docs/api-reference/chat). Thus, besides building a simple chatbot, you can also have the following functionalities with WebLLM:
-
-- [streaming](examples/streaming): return output as chunks in real-time in the form of an AsyncGenerator
-- [json-mode](examples/json-mode): efficiently ensure output is in JSON format, see [OpenAI Reference](https://platform.openai.com/docs/guides/text-generation/chat-completions-api) for more.
-- [seed-to-reproduce](examples/seed-to-reproduce): use seeding to ensure a reproducible output with fields `seed`.
-- [function-calling](examples/function-calling) (WIP): function calling with fields `tools` and `tool_choice` (with preliminary support); or manual function calling without `tools` or `tool_choice` (keeps the most flexibility).
-
-## Custom Models
-
-WebLLM works as a companion project of [MLC LLM](https://github.com/mlc-ai/mlc-llm) and it supports custom models in MLC format. 
-It reuses the model artifact and builds the flow of MLC LLM. To compile and use your own models with WebLLM, please check out
-[MLC LLM document](https://llm.mlc.ai/docs/deploy/webllm.html)
-on how to compile and deploy new model weights and libraries to WebLLM. 
-
-Here, we go over the high-level idea. There are two elements of the WebLLM package that enable new models and weight variants.
-
-- `model`: Contains a URL to model artifacts, such as weights and meta-data.
-- `model_lib`: A URL to the web assembly library (i.e. wasm file) that contains the executables to accelerate the model computations.
-
-Both are customizable in the WebLLM.
-
-```typescript
-import { CreateMLCEngine } from "@mlc-ai/web-llm";
-
-async main() {
-  const appConfig = {
-    "model_list": [
-      {
-        "model": "/url/to/my/llama",
-        "model_id": "MyLlama-3b-v1-q4f32_0",
-        "model_lib": "/url/to/myllama3b.wasm",
-      }
-    ],
-  };
-  // override default
-  const chatOpts = {
-    "repetition_penalty": 1.01
-  };
-
-  // load a prebuilt model
-  // with a chat option override and app config
-  // under the hood, it will load the model from myLlamaUrl
-  // and cache it in the browser cache
-  // The chat will also load the model library from "/url/to/myllama3b.wasm",
-  // assuming that it is compatible to the model in myLlamaUrl.
-  const engine = await CreateMLCEngine(
-    "MyLlama-3b-v1-q4f32_0",
-    { appConfig }, // engineConfig
-    chatOpts,
-  );
-}
-```
-
-In many cases, we only want to supply the model weight variant, but
-not necessarily a new model (e.g. `NeuralHermes-Mistral` can reuse `Mistral`'s
-model library). For examples of how a model library can be shared by different model variants,
-see `webllm.prebuiltAppConfig`.
-
-## Build WebLLM Package From Source
-
-NOTE: you don't need to build from source unless you would like to modify the WebLLM package.
-To use the npm, simply follow [Get Started](#get-started) or any of the [examples](examples) instead.
-
-To build from source, simply run:
+The model is compiled with `mlc_llm compile` using special flags:
 
 ```bash
+mlc_llm compile ./mlc-chat-config.json \
+  --device webgpu \
+  -o TinyLlama-1.1B-minimal.wasm \
+  --overrides "tensor_parallel_shards=1" \
+  --lib-format wasm
+```
+
+The compilation uses the patched `tvm/contrib/emcc.py` to link against our minimal runtime instead of the full one.
+
+### 4. WebLLM TypeScript Integration
+
+In `web-llm/src/llm_chat.ts`, the key logic:
+
+```typescript
+// Check if model has prefill_all_logits function
+const hasPrefillAllLogits = this.tvm.getFunction("prefill_all_logits") !== null;
+
+if (options.return_input_logprobs && hasPrefillAllLogits) {
+  // Call the efficient single-pass function
+  const allLogits = this.prefillAllLogits(inputTokens);
+  // Convert logits → logprobs via softmax
+  const logprobs = this.computeLogprobsFromLogits(allLogits, inputTokens);
+  response.input_logprobs = logprobs;
+  response.input_tokens = inputTokens;
+}
+```
+
+### 5. OpenAI-Compatible API
+
+The feature is exposed via standard OpenAI chat completion API:
+
+```typescript
+const response = await engine.chat.completions.create({
+  messages: [{ role: "user", content: "Your text here" }],
+  max_tokens: 1,
+  return_input_logprobs: true,  // ← NEW OPTION
+});
+
+// Response includes:
+response.input_logprobs  // number[] - logprob for each input token
+response.input_tokens    // string[] - the actual tokens
+```
+
+## Demo Application
+
+Located in `web-llm/examples/react-logit-demo/`:
+
+### Features
+- **Side-by-side comparison**: Analyzes "easy" text vs "difficult" text
+- **Visual annotation**: Tokens colored green (high prob) → red (low prob)
+- **Perplexity scoring**: Computes perplexity = exp(-avg_logprob)
+
+### Running the Demo
+
+```bash
+cd web-llm/examples/react-logit-demo
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+### Key Files
+
+- `src/App.tsx`: Main React component with comparison UI
+- `public/TinyLlama-1.1B.wasm`: The custom-compiled WASM with `prefill_all_logits`
+
+## Files Changed
+
+### mlc-llm Repository (committed)
+
+| File | Purpose |
+|------|---------|
+| `web/Makefile` | Added `minimal` target for building lightweight runtime |
+| `web/emcc/mlc_wasm_runtime_minimal.cc` | New minimal runtime (no serve engine) |
+| `python/mlc_llm/model/llama/llama_model.py` | Added `prefill_all_logits` function |
+
+### web-llm Repository (committed)
+
+| File | Purpose |
+|------|---------|
+| `src/config.ts` | Added `return_input_logprobs` config option |
+| `src/engine.ts` | Pass option through to LLMChat |
+| `src/llm_chat.ts` | Core logic to call `prefill_all_logits` and compute logprobs |
+| `src/openai_api_protocols/chat_completion.ts` | Type definitions for `input_logprobs` |
+| `examples/react-logit-demo/` | Complete demo application |
+
+### Uncommitted Changes (mlc-llm)
+
+The following files have experimental changes for a C++ server-side implementation of input logprobs. These are **not needed** for the browser demo:
+
+- `cpp/serve/config.cc` - Server-side config parsing
+- `cpp/serve/engine_actions/new_request_prefill.cc` - Server-side logprob extraction
+- `web/emcc/mlc_wasm_runtime.cc` - Full runtime with serve engine (bloated, not used)
+
+These can be safely discarded with `git checkout -- <file>`.
+
+## Performance
+
+The `prefill_all_logits` approach is efficient because:
+
+1. **Single GPU pass**: All logits computed in one forward pass
+2. **No re-tokenization**: Uses the same tokens as normal prefill
+3. **Minimal overhead**: Only difference from standard prefill is applying LM head to all positions instead of just the last
+
+For a ~100 token input on TinyLlama-1.1B with WebGPU, expect ~50-100ms for the full logprob computation.
+
+## Integrating Into Your Existing App
+
+If you already have an app that uses `@mlc-ai/web-llm` as an npm dependency, here's exactly what you need to do to add input logprobs support.
+
+### What You Need to Ship
+
+You need **two things** beyond what standard WebLLM provides:
+
+| Asset | What it is | Where to get it | Size |
+|-------|------------|-----------------|------|
+| **Custom WASM** | Model compiled with `prefill_all_logits` function | `models/TinyLlama-1.1B-Chat-v1.0-q4f16_1/TinyLlama-1.1B-minimal.wasm` | ~6MB |
+| **Modified WebLLM** | TypeScript library with `return_input_logprobs` support | `web-llm/lib/` (built output) | ~200KB |
+
+The model weights (`.bin` shards) are **unchanged** - you use the same weights from HuggingFace.
+
+### Option A: Use Local WebLLM Build (Recommended)
+
+This is the cleanest approach - you replace the npm package with your local build.
+
+#### Step 1: Build the modified WebLLM
+
+```bash
+cd /path/to/logitwebllm/web-llm
 npm install
 npm run build
 ```
 
-Then, to test the effects of your code change in an example, inside `examples/get-started/package.json`, change from `"@mlc-ai/web-llm": "^0.2.80"` to `"@mlc-ai/web-llm": ../..`.
+This produces built files in `web-llm/lib/`.
 
-Then run:
+#### Step 2: Link to your app
 
+**Option A1: npm link (for development)**
 ```bash
-cd examples/get-started
-npm install
-npm start
+cd /path/to/logitwebllm/web-llm
+npm link
+
+cd /path/to/your-app
+npm link @mlc-ai/web-llm
 ```
 
-Note that sometimes you would need to switch between `file:../..` and `../..` to trigger npm to recognize new changes. In the worst case, you can run:
+**Option A2: file dependency (for production)**
 
-```bash
-cd examples/get-started
-rm -rf node_modules dist package-lock.json .parcel-cache
-npm install
-npm start
-```
-
-### In case you need to build TVMjs from source
-
-WebLLM's runtime largely depends on TVMjs: https://github.com/apache/tvm/tree/main/web
-
-While it is also available as an npm package: https://www.npmjs.com/package/@mlc-ai/web-runtime, you can build it from source if needed by following the steps below.
-
-1. Install [emscripten](https://emscripten.org). It is an LLVM-based compiler that compiles C/C++ source code to WebAssembly.
-    - Follow the [installation instruction](https://emscripten.org/docs/getting_started/downloads.html#installation-instructions-using-the-emsdk-recommended) to install the latest emsdk.
-    - Source `emsdk_env.sh` by `source path/to/emsdk_env.sh`, so that `emcc` is reachable from PATH and the command `emcc` works.
-
-    We can verify the successful installation by trying out `emcc` terminal.
-
-    Note: We recently found that using the latest `emcc` version may run into issues during runtime. Use `./emsdk install 3.1.56` instead of `./emsdk install latest` for now as a workaround. The error may look like
-    ```
-    Init error, LinkError: WebAssembly.instantiate(): Import #6 module="wasi_snapshot_preview1"
-    function="proc_exit": function import requires a callable
-    ```
-
-2. In `./package.json`, change from `"@mlc-ai/web-runtime": "0.18.0-dev2",` to `"@mlc-ai/web-runtime": "file:./tvm_home/web",`.
-
-3. Setup necessary environment
-
-   Prepare all the necessary dependencies for web build:
-
-   ```shell
-   ./scripts/prep_deps.sh
-   ```
-
-   In this step, if `$TVM_SOURCE_DIR` is not defined in the environment, we will execute the following line to build `tvmjs` dependency:
-   ```shell
-   git clone https://github.com/mlc-ai/relax 3rdparty/tvm-unity --recursive
-   ```
-
-   This clones the current HEAD of `mlc-ai/relax`. However, it may not always be the correct branch or commit to clone. To build a specific npm version from source, refer to the version bump PR, which states which branch (i.e. `mlc-ai/relax` or `apache/tvm`) and which commit the current WebLLM version depends on. For instance, version 0.2.52, according to its version bump PR https://github.com/mlc-ai/web-llm/pull/521, is built by checking out the following commit https://github.com/apache/tvm/commit/e6476847753c80e054719ac47bc2091c888418b6 in `apache/tvm`, rather than the HEAD of `mlc-ai/relax`.
-
-   Besides, `--recursive` is necessary and important. Otherwise, you may encounter errors like `fatal error: 'dlpack/dlpack.h' file not found`.
-
-4. Build WebLLM Package
-
-   ```shell
-   npm run build
-   ```
-
-5. Validate some of the sub-packages
-
-   You can then go to the subfolders in [examples](examples) to validate some of the sub-packages.
-   We use Parcelv2 for bundling. Although Parcel is not very good at tracking parent directory
-   changes sometimes. When you make a change in the WebLLM package, try to edit the `package.json`
-   of the subfolder and save it, which will trigger Parcel to rebuild.
-
-## Links
-
-- [Demo App: WebLLM Chat](https://chat.webllm.ai/)
-- If you want to run LLM on native runtime, check out [MLC-LLM](https://github.com/mlc-ai/mlc-llm)
-- You might also be interested in [Web Stable Diffusion](https://github.com/mlc-ai/web-stable-diffusion/).
-
-## Acknowledgement
-
-This project is initiated by members from CMU Catalyst, UW SAMPL, SJTU, OctoML, and the MLC community. We would love to continue developing and supporting the open-source ML community.
-
-This project is only possible thanks to the shoulders open-source ecosystems that we stand on. We want to thank the Apache TVM community and developers of the TVM Unity effort. The open-source ML community members made these models publicly available. PyTorch and Hugging Face communities make these models accessible. We would like to thank the teams behind Vicuna, SentencePiece, LLaMA, and Alpaca. We also would like to thank the WebAssembly, Emscripten, and WebGPU communities. Finally, thanks to Dawn and WebGPU developers.
-
-## Citation
-If you find this project to be useful, please cite:
-
-```
-@misc{ruan2024webllmhighperformanceinbrowserllm,
-      title={WebLLM: A High-Performance In-Browser LLM Inference Engine}, 
-      author={Charlie F. Ruan and Yucheng Qin and Xun Zhou and Ruihang Lai and Hongyi Jin and Yixin Dong and Bohan Hou and Meng-Shiun Yu and Yiyan Zhai and Sudeep Agarwal and Hangrui Cao and Siyuan Feng and Tianqi Chen},
-      year={2024},
-      eprint={2412.15803},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2412.15803}, 
+In your app's `package.json`:
+```json
+{
+  "dependencies": {
+    "@mlc-ai/web-llm": "file:../logitwebllm/web-llm"
+  }
 }
 ```
 
-## Contributors
+Then run `npm install`.
 
-<a href="https://github.com/mlc-ai/web-llm/graphs/contributors">
-  <img alt="contributors" src="https://contrib.rocks/image?repo=mlc-ai/web-llm"/>
-</a>
+**Option A3: Copy the built files**
 
-<p align="right">
-  <a href="#top">⬆ Back to Top ⬆</a>
-</p>
+Copy `web-llm/lib/` into your project and import directly:
+```typescript
+import * as webllm from "./lib/index.js";
+```
+
+#### Step 3: Host the custom WASM
+
+Copy the WASM file to your app's public/static folder:
+```bash
+cp /path/to/logitwebllm/models/TinyLlama-1.1B-Chat-v1.0-q4f16_1/TinyLlama-1.1B-minimal.wasm \
+   /path/to/your-app/public/TinyLlama-1.1B.wasm
+```
+
+#### Step 4: Configure your app to use custom WASM
+
+```typescript
+import * as webllm from "@mlc-ai/web-llm";
+
+// Define custom model config pointing to YOUR hosted WASM
+const appConfig = {
+  model_list: [
+    {
+      // Standard weights from HuggingFace (unchanged)
+      model: "https://huggingface.co/mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC",
+      model_id: "TinyLlama-1.1B-logprobs",
+      // YOUR custom WASM with prefill_all_logits
+      model_lib: "/TinyLlama-1.1B.wasm",  // ← Served from your public folder
+      vram_required_MB: 700,
+      low_resource_required: true,
+    },
+  ],
+};
+
+// Initialize engine with custom config
+const engine = await webllm.CreateMLCEngine("TinyLlama-1.1B-logprobs", {
+  appConfig: appConfig,
+  initProgressCallback: (report) => console.log(report.text),
+});
+```
+
+#### Step 5: Use the new API
+
+```typescript
+const response = await engine.chat.completions.create({
+  messages: [{ role: "user", content: "Text to analyze" }],
+  max_tokens: 1,
+  return_input_logprobs: true,  // ← Enable input logprobs
+  logprobs: true,
+  top_logprobs: 1,
+});
+
+// Access the results
+const inputLogprobs: number[] = response.input_logprobs;  // [-2.3, -0.5, -1.2, ...]
+const inputTokens: string[] = response.input_tokens;      // ["The", " sun", " is", ...]
+
+// Calculate perplexity
+const avgLogprob = inputLogprobs.reduce((a, b) => a + b, 0) / inputLogprobs.length;
+const perplexity = Math.exp(-avgLogprob);
+```
+
+### Option B: Patch npm Package (Quick Hack)
+
+If you don't want to manage a local WebLLM build, you can patch `node_modules`:
+
+```bash
+# After npm install, copy over modified files
+cp /path/to/logitwebllm/web-llm/lib/* node_modules/@mlc-ai/web-llm/lib/
+```
+
+**Warning**: This gets overwritten on `npm install`. Use `patch-package` for persistence:
+```bash
+npx patch-package @mlc-ai/web-llm
+```
+
+### Hosting Requirements
+
+| File | Hosting Location | Notes |
+|------|------------------|-------|
+| `TinyLlama-1.1B.wasm` | Your server's `/public` or CDN | Must be same-origin or CORS-enabled |
+| Model weights | HuggingFace (default) or your CDN | ~700MB, cached in IndexedDB |
+
+The WASM file **must** be served with correct MIME type:
+```
+Content-Type: application/wasm
+```
+
+Most static hosts (Vercel, Netlify, etc.) handle this automatically.
+
+### Complete Integration Example
+
+Here's a minimal working example:
+
+```typescript
+// app.ts
+import * as webllm from "@mlc-ai/web-llm";
+
+async function analyzeText(text: string) {
+  const appConfig = {
+    model_list: [{
+      model: "https://huggingface.co/mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC",
+      model_id: "TinyLlama-logprobs",
+      model_lib: "/TinyLlama-1.1B.wasm",
+      vram_required_MB: 700,
+    }],
+  };
+
+  const engine = await webllm.CreateMLCEngine("TinyLlama-logprobs", { appConfig });
+
+  const response = await engine.chat.completions.create({
+    messages: [{ role: "user", content: text }],
+    max_tokens: 1,
+    return_input_logprobs: true,
+  });
+
+  return {
+    tokens: response.input_tokens,
+    logprobs: response.input_logprobs,
+    perplexity: Math.exp(-response.input_logprobs.reduce((a, b) => a + b, 0) / response.input_logprobs.length),
+  };
+}
+
+// Usage
+const result = await analyzeText("The quick brown fox jumps over the lazy dog.");
+console.log("Perplexity:", result.perplexity);
+```
+
+### Checklist Before Deploying
+
+- [ ] Built WebLLM with `npm run build` in `web-llm/`
+- [ ] Linked/copied WebLLM to your app (Option A1, A2, or A3)
+- [ ] Copied `TinyLlama-1.1B-minimal.wasm` to your public folder
+- [ ] Updated `appConfig` to point to your hosted WASM
+- [ ] Tested locally with `npm run dev`
+- [ ] Verified WASM loads (check Network tab - should be ~6MB)
+- [ ] Verified `response.input_logprobs` is populated (not undefined)
+
+### Troubleshooting
+
+**"return_input_logprobs is not a valid option"**
+→ You're using the npm version of WebLLM, not your modified build. Check your import.
+
+**"input_logprobs is undefined"**
+→ The model doesn't have `prefill_all_logits`. Check that you're using the custom WASM.
+
+**WASM fails to load / 404**
+→ Check the path in `model_lib`. It should be relative to your app's public root.
+
+**"LinkError: import object field ... is not a Function"**
+→ You're using the wrong WASM (one compiled with full runtime). Use `TinyLlama-1.1B-minimal.wasm`.
+
+---
+
+## Keeping In Sync With Upstream
+
+This project forks two repositories. Here's what you need and how to stay updated.
+
+### Do I Need Both Repositories?
+
+| Repository | Purpose | When You Need It |
+|------------|---------|------------------|
+| **mlc-llm** | Compiling models with `prefill_all_logits` | Only when compiling new models or updating model architecture |
+| **web-llm** | TypeScript runtime with `return_input_logprobs` | Always - this is what your app imports |
+
+**For most use cases:** You only need `web-llm` after initial setup. The WASM files don't change unless you:
+- Want to use a different model (e.g., Llama-3, Mistral)
+- Need to update TVM/MLC for bug fixes or performance improvements
+
+### Repository Structure
+
+```
+logitwebllm/
+├── mlc-llm/          # Fork of github.com/mlc-ai/mlc-llm
+│   ├── web/          # WASM build system
+│   └── python/       # Model definitions (prefill_all_logits)
+│
+├── web-llm/          # Fork of github.com/mlc-ai/web-llm  
+│   ├── src/          # TypeScript source (our changes live here)
+│   └── lib/          # Built output (ship this)
+│
+├── models/           # Compiled WASM files
+│   └── TinyLlama-1.1B-Chat-v1.0-q4f16_1/
+│       └── TinyLlama-1.1B-minimal.wasm
+│
+└── README.md         # This file
+```
+
+### Setting Up Upstream Remotes
+
+First time only - add upstream remotes:
+
+```bash
+# For web-llm
+cd web-llm
+git remote add upstream https://github.com/mlc-ai/web-llm.git
+git fetch upstream
+
+# For mlc-llm
+cd ../mlc-llm
+git remote add upstream https://github.com/mlc-ai/mlc-llm.git
+git fetch upstream
+```
+
+Verify remotes:
+```bash
+git remote -v
+# Should show:
+# origin    git@github.com:YOUR_USER/web-llm.git (your fork)
+# upstream  https://github.com/mlc-ai/web-llm.git (official)
+```
+
+### Syncing web-llm (TypeScript Changes)
+
+This is the one you'll update most often.
+
+```bash
+cd web-llm
+
+# Fetch latest upstream
+git fetch upstream
+
+# Check what changed upstream
+git log --oneline main..upstream/main
+
+# Merge upstream into your branch
+git checkout main
+git merge upstream/main
+
+# If conflicts, they'll likely be in:
+# - src/llm_chat.ts (our main changes)
+# - src/config.ts
+# - src/openai_api_protocols/chat_completion.ts
+```
+
+**Resolving conflicts:**
+
+Our changes are localized to a few areas. When merging:
+
+1. **Keep our additions** - `return_input_logprobs`, `prefill_all_logits` logic
+2. **Take upstream changes** - everything else
+
+After resolving:
+```bash
+git add .
+git commit -m "Merge upstream web-llm"
+npm run build  # Rebuild
+```
+
+### Syncing mlc-llm (Model Compilation)
+
+Only needed when:
+- Upstream fixes bugs in model compilation
+- You want to compile a newer model architecture
+- TVM runtime changes affect WASM
+
+```bash
+cd mlc-llm
+
+git fetch upstream
+git merge upstream/main
+
+# Our changes are in:
+# - python/mlc_llm/model/llama/llama_model.py (prefill_all_logits function)
+# - web/Makefile (minimal target)
+# - web/emcc/mlc_wasm_runtime_minimal.cc (minimal runtime)
+```
+
+After merging, you may need to **recompile the model**:
+```bash
+cd web
+make minimal  # Rebuild the minimal runtime
+
+# Then recompile your model (if model code changed)
+source ../.venv/bin/activate
+mlc_llm compile ./path/to/mlc-chat-config.json \
+  --device webgpu \
+  -o TinyLlama-1.1B-minimal.wasm
+```
+
+### What Our Changes Actually Are
+
+**web-llm (4 files modified):**
+
+| File | Change | Lines |
+|------|--------|-------|
+| `src/config.ts` | Added `return_input_logprobs` to config types | ~5 lines |
+| `src/engine.ts` | Pass option through to LLMChat | ~3 lines |
+| `src/llm_chat.ts` | Core logic: call `prefill_all_logits`, compute softmax | ~50 lines |
+| `src/openai_api_protocols/chat_completion.ts` | Type definitions for response | ~10 lines |
+
+**mlc-llm (3 files modified/added):**
+
+| File | Change | Lines |
+|------|--------|-------|
+| `python/mlc_llm/model/llama/llama_model.py` | Added `prefill_all_logits` method + export | ~20 lines |
+| `web/Makefile` | Added `minimal` target | ~10 lines |
+| `web/emcc/mlc_wasm_runtime_minimal.cc` | New file - minimal WASM runtime | ~40 lines |
+
+**Total: ~140 lines of changes** across both repos.
+
+### Automation Script
+
+Create a script to sync both repos:
+
+```bash
+#!/bin/bash
+# sync-upstream.sh
+
+set -e
+
+echo "=== Syncing web-llm ==="
+cd web-llm
+git fetch upstream
+git merge upstream/main --no-edit || {
+    echo "Conflicts in web-llm! Resolve manually."
+    exit 1
+}
+npm run build
+
+echo "=== Syncing mlc-llm ==="
+cd ../mlc-llm
+git fetch upstream
+git merge upstream/main --no-edit || {
+    echo "Conflicts in mlc-llm! Resolve manually."
+    exit 1
+}
+
+echo "=== Done! ==="
+echo "If model compilation changed, run: cd mlc-llm/web && make minimal"
+```
+
+### When Upstream Adds input_logprobs Support
+
+If the official WebLLM adds `return_input_logprobs` support (likely eventually), you can:
+
+1. **Check if compatible:** Test if their API matches ours
+2. **Migrate:** Switch to upstream npm package
+3. **Keep custom WASM:** You may still need custom WASM if their model compilation doesn't include `prefill_all_logits`
+
+Until then, maintain your fork.
+
+### Recommended Sync Frequency
+
+| Repo | Frequency | Reason |
+|------|-----------|--------|
+| web-llm | Monthly or on new features | TypeScript changes, bug fixes |
+| mlc-llm | Quarterly or when needed | Model architecture changes are rare |
+
+---
+
+## Future Work
+
+- Support for other model architectures (Mistral, Qwen, etc.)
+- Streaming logprobs during generation
+- Batch processing for multiple texts
+- Integration with official WebLLM release
