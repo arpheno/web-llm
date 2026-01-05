@@ -139,6 +139,7 @@ export interface GenerationConfig {
   logit_bias?: Record<string, number> | null;
   logprobs?: boolean | null;
   top_logprobs?: number | null;
+  return_input_logprobs?: boolean | null;
   response_format?: ResponseFormat | null;
   // extra_body in ChatCompletionsRequest
   enable_thinking?: boolean | null;

@@ -802,6 +802,7 @@ export class MLCEngine implements MLCEngineInterface {
       ignore_eos: request.ignore_eos,
       enable_thinking: request.extra_body?.enable_thinking,
       enable_latency_breakdown: request.extra_body?.enable_latency_breakdown,
+      return_input_logprobs: request.return_input_logprobs,
     };
 
     // 0.5 Block wait until this pipeline finishes all previous requests
@@ -932,6 +933,12 @@ export class MLCEngine implements MLCEngineInterface {
               }
             : defaultExtra,
         } as CompletionUsage,
+        input_logprobs: request.return_input_logprobs
+          ? selectedPipeline.getInputLogprobs()
+          : undefined,
+        input_tokens: request.return_input_logprobs
+          ? selectedPipeline.getInputTokenStrings()
+          : undefined,
       };
 
       // Reset seed -- we do not want this seed to affect future requests

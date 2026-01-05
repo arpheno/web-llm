@@ -189,6 +189,11 @@ export interface ChatCompletionRequestBase {
   logprobs?: boolean | null;
 
   /**
+   * Whether to return log probabilities of the input tokens.
+   */
+  return_input_logprobs?: boolean | null;
+
+  /**
    * An integer between 0 and 5 specifying the number of most likely tokens to return
    * at each token position, each with an associated log probability. `logprobs` must
    * be set to `true` if this parameter is used.
@@ -351,6 +356,16 @@ export interface ChatCompletion {
    * @note Not supported yet.
    */
   system_fingerprint?: string;
+
+  /**
+   * The input logprobs if requested.
+   */
+  input_logprobs?: Array<number>;
+
+  /**
+   * The input tokens as strings if input_logprobs was requested.
+   */
+  input_tokens?: Array<string>;
 }
 
 /**
@@ -402,6 +417,16 @@ export interface ChatCompletionChunk {
    * statistics for the entire request.
    */
   usage?: CompletionUsage;
+
+  /**
+   * The input logprobs if requested.
+   */
+  input_logprobs?: Array<number>;
+
+  /**
+   * The input tokens as strings if input_logprobs was requested.
+   */
+  input_tokens?: Array<string>;
 }
 
 export const ChatCompletionRequestUnsupportedFields: Array<string> = []; // all supported as of now

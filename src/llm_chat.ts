@@ -44,6 +44,7 @@ export class LLMChatPipeline {
   private device: tvmjs.DLDevice;
   private vm: tvmjs.VirtualMachine;
   private prefill: tvmjs.PackedFunc;
+  private prefillAllLogits: tvmjs.PackedFunc | undefined; // Returns logits for ALL input tokens
   private decoding: tvmjs.PackedFunc;
   private image_embed: tvmjs.PackedFunc | undefined;
   private embed: tvmjs.PackedFunc;
@@ -90,6 +91,8 @@ export class LLMChatPipeline {
   // Cleared & updated at the exact same spots as `outputMessage`. Only updated when
   // `genConfig.logprobs` is true. Each entry corresponds to a single autoregressive step.
   private tokenLogprobArray: Array<ChatCompletionTokenLogprob> = [];
+  private inputLogprobs: Array<number> = [];
+  private inputTokenIds: Array<number> = [];
 
   // stats, reset at every `resetChat(keepstats=false)`
   private decodingTotalTime = 0;
@@ -146,6 +149,7 @@ export class LLMChatPipeline {
   private sampleIndices: Int32Array;
   private sampleIndicesDevice: tvmjs.Tensor;
   private topPDevice: tvmjs.Tensor;
+  private lastLogitsOnCPU: Float32Array | undefined;
 
   constructor(
     tvm: tvmjs.Instance,
@@ -201,6 +205,19 @@ export class LLMChatPipeline {
     this.prefill = this.tvm.detachFromCurrentScope(
       this.vm.getFunction("prefill"),
     );
+    // Try to load prefill_all_logits for efficient input logprobs
+    try {
+      this.prefillAllLogits = this.tvm.detachFromCurrentScope(
+        this.vm.getFunction("prefill_all_logits"),
+      );
+      log.info(
+        "Loaded prefill_all_logits function for efficient input logprobs",
+      );
+    } catch {
+      log.info(
+        "prefill_all_logits not available, will use chunk_size=1 workaround for input logprobs",
+      );
+    }
     this.embed = this.tvm.detachFromCurrentScope(this.vm.getFunction("embed"));
     this.decoding = this.tvm.detachFromCurrentScope(
       this.vm.getFunction("decode"),
@@ -430,6 +447,20 @@ export class LLMChatPipeline {
     return this.tokenLogprobArray;
   }
 
+  getInputLogprobs(): Array<number> {
+    return this.inputLogprobs;
+  }
+
+  getInputTokenStrings(): Array<string> {
+    return this.inputTokenIds.map((id) =>
+      this.tokenizer.decode(new Int32Array([id])),
+    );
+  }
+
+  getInputTokenIds(): Array<number> {
+    return this.inputTokenIds;
+  }
+
   /**
    * @returns the number of tokens decoded for a single request or a single choice in the request.
    */
@@ -567,6 +598,8 @@ export class LLMChatPipeline {
     this.appearedTokensFreq.clear();
     this.outputMessage = "";
     this.tokenLogprobArray = [];
+    this.inputLogprobs = [];
+    this.inputTokenIds = [];
     this.curRoundDecodingTotalTokens = 0;
     this.curRoundPrefillTotalTokens = 0;
     this.curRoundPrefillTotalTime = 0;
@@ -691,10 +724,21 @@ export class LLMChatPipeline {
     }
 
     // 1. Chunk inputData to embed and forward in one shot for each, minimize intermediate data
-    const retGetChunks = getChunkedPrefillInputData(
-      inputData,
-      this.prefillChunkSize,
-    );
+    // Reset lastLogitsOnCPU at the start of prefill
+    this.lastLogitsOnCPU = undefined;
+
+    // Check if we need to get logprobs for all input tokens
+    const needAllLogits = genConfig?.return_input_logprobs === true;
+    // Use efficient prefill_all_logits if available, otherwise fall back to chunk_size=1
+    const useAllLogits = needAllLogits && this.prefillAllLogits !== undefined;
+
+    let chunkSize = this.prefillChunkSize;
+    if (needAllLogits && !useAllLogits) {
+      // Fallback: when we need input logprobs but don't have prefill_all_logits
+      chunkSize = 1;
+    }
+
+    const retGetChunks = getChunkedPrefillInputData(inputData, chunkSize);
     const chunks: Array<Array<number> | ImageURL>[] = retGetChunks[0];
     const chunkLens: Array<number> = retGetChunks[1];
 
@@ -706,12 +750,15 @@ export class LLMChatPipeline {
       const chunkLen = chunkLens[i];
       const prevFilledLen = this.filledKVCacheLength;
       logits = this.tvm.detachFromCurrentScope(
-        await this.embedAndForward(chunk, chunkLen),
+        await this.embedAndForward(chunk, chunkLen, useAllLogits),
       );
       if (this.filledKVCacheLength !== prevFilledLen + chunkLen) {
         throw new Error(
           "Internal Error: filledKVCacheLength does not match expected value.",
         );
+      }
+      if (needAllLogits) {
+        await this.updateInputLogprobs(logits, chunk, chunkLen);
       }
     }
     this.tvm.endScope();
@@ -956,6 +1003,7 @@ export class LLMChatPipeline {
   private async embedAndForward(
     inputData: Array<Array<number> | ImageURL>,
     inputDataLen: number,
+    useAllLogits: boolean = false,
   ): Promise<tvmjs.Tensor> {
     if (inputDataLen > this.prefillChunkSize) {
       throw new Error(
@@ -997,7 +1045,16 @@ export class LLMChatPipeline {
     this.fKVCacheBeginForward!(this.kvCache, seqIdsTuple, inputLenShape);
     let retValue;
     if (inputDataLen > 1) {
-      retValue = this.prefill(allEmbeddings, this.kvCache, this.params);
+      // Use prefillAllLogits if available and requested (for input logprobs)
+      if (useAllLogits && this.prefillAllLogits) {
+        retValue = this.prefillAllLogits(
+          allEmbeddings,
+          this.kvCache,
+          this.params,
+        );
+      } else {
+        retValue = this.prefill(allEmbeddings, this.kvCache, this.params);
+      }
     } else {
       retValue = this.decoding(allEmbeddings, this.kvCache, this.params);
     }
@@ -1013,17 +1070,108 @@ export class LLMChatPipeline {
 
   // NOTE: caller must call device.sync()
   private updateLogitsOnCPU(logits: tvmjs.Tensor): tvmjs.Tensor {
-    if (this.logitsOnCPU == undefined) {
+    // Check if we need to reallocate (shape changed or first call)
+    const needRealloc =
+      this.logitsOnCPU == undefined ||
+      logits.shape.length !== this.logitsOnCPU.shape.length ||
+      logits.shape.some((dim, i) => dim !== this.logitsOnCPU!.shape[i]);
+
+    if (needRealloc) {
+      if (this.logitsOnCPU != undefined) {
+        this.logitsOnCPU.dispose();
+      }
       this.logitsOnCPU = this.tvm.detachFromCurrentScope(
         this.tvm.empty(logits.shape, logits.dtype, this.tvm.cpu()),
       );
+    }
+    this.logitsOnCPU!.copyFrom(logits);
+    return this.logitsOnCPU!;
+  }
+
+  private async updateInputLogprobs(
+    logits: tvmjs.Tensor,
+    chunk: Array<Array<number> | ImageURL>,
+    chunkLen: number,
+  ) {
+    // Move logits to CPU
+    this.tvm.beginScope();
+    this.updateLogitsOnCPU(logits);
+    this.tvm.endScope();
+    await this.device.sync();
+
+    const logitsOnCPUArray = <Float32Array>this.logitsOnCPU!.toArray();
+    const vocabSize = this.fullVocabSize;
+
+    // Check shape
+    // Expected: [1, chunkLen, vocab] or [chunkLen, vocab]
+    let seqLen = 0;
+    if (logits.ndim === 3) {
+      seqLen = logits.shape[1];
+    } else if (logits.ndim === 2) {
+      seqLen = logits.shape[0];
     } else {
-      if (logits.shape[0] != this.logitsOnCPU.shape[0]) {
-        throw Error("We expect the size of logits to remain unchanged");
+      return;
+    }
+
+    // If we only have the last token's logits, we can't compute logprobs for the chunk
+    if (seqLen !== chunkLen) {
+      return;
+    }
+
+    let currentOffset = 0;
+    for (const item of chunk) {
+      if (Array.isArray(item)) {
+        const tokens = item;
+        for (const token of tokens) {
+          // Store the token ID for later retrieval
+          this.inputTokenIds.push(token);
+
+          let tokenLogits: Float32Array | null = null;
+
+          if (currentOffset > 0) {
+            const prevLogitIndex = currentOffset - 1;
+            tokenLogits = logitsOnCPUArray.subarray(
+              prevLogitIndex * vocabSize,
+              (prevLogitIndex + 1) * vocabSize,
+            );
+          } else if (this.lastLogitsOnCPU) {
+            // Use logits from previous chunk
+            tokenLogits = this.lastLogitsOnCPU;
+          }
+
+          if (tokenLogits) {
+            let maxVal = -Infinity;
+            for (let j = 0; j < vocabSize; j++) {
+              if (tokenLogits[j] > maxVal) maxVal = tokenLogits[j];
+            }
+            let sumExp = 0;
+            for (let j = 0; j < vocabSize; j++) {
+              sumExp += Math.exp(tokenLogits[j] - maxVal);
+            }
+            const logSumExp = Math.log(sumExp) + maxVal;
+            const logProb = tokenLogits[token] - logSumExp;
+            this.inputLogprobs.push(logProb);
+          } else {
+            // First token of the sequence, no logprob available from previous context in this chunk
+            this.inputLogprobs.push(0.0);
+          }
+          currentOffset++;
+        }
+      } else {
+        // ImageURL
+        currentOffset += IMAGE_EMBED_SIZE;
       }
     }
-    this.logitsOnCPU.copyFrom(logits);
-    return this.logitsOnCPU;
+
+    // Save the last logit of this chunk for the next chunk
+    if (chunkLen > 0) {
+      const lastLogitIndex = chunkLen - 1;
+      const lastLogits = logitsOnCPUArray.subarray(
+        lastLogitIndex * vocabSize,
+        (lastLogitIndex + 1) * vocabSize,
+      );
+      this.lastLogitsOnCPU = new Float32Array(lastLogits);
+    }
   }
 
   private async sampleTokenFromLogits(
