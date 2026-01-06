@@ -88,6 +88,8 @@ export function getTokenTableFromTokenizer(tokenizer: Tokenizer): string[] {
  * @return the href of the final URL.
  */
 export function cleanModelUrl(modelUrl: string): string {
+  if (!modelUrl.startsWith("http"))
+    return modelUrl.endsWith("/") ? modelUrl : modelUrl + "/";
   // https://huggingface.co/USER/MODEL -> https://huggingface.co/USER/MODEL/
   modelUrl += modelUrl.endsWith("/") ? "" : "/";
   if (!modelUrl.match(/.+\/resolve\/.+\//)) modelUrl += "resolve/main/";

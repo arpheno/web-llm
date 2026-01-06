@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import * as webllm from "@mlc-ai/web-llm";
 
 // Easy to read text (predictable, simple grammar)
@@ -23,7 +23,51 @@ interface AnalysisResult {
     avg: number;
     perplexity: number;
   } | null;
+  modelName: string;
 }
+
+// Model Definitions
+const AVAILABLE_MODELS = [
+  {
+    id: "TinyLlama",
+    name: "TinyLlama 1.1B",
+    description: "Lightweight, remote weights",
+    config: {
+      model:
+        "https://huggingface.co/mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC",
+      model_id: "TinyLlama",
+      model_lib: "/TinyLlama-1.1B.wasm",
+      vram_required_MB: 700,
+      low_resource_required: true,
+    },
+  },
+  {
+    id: "Qwen2.5-1.5B",
+    name: "Qwen2.5 1.5B",
+    description: "High quality, local weights",
+    config: {
+      model: "/models/Qwen2.5-1.5B-q4f16_1",
+      model_id: "Qwen2.5-1.5B",
+      model_lib: "/models/Qwen2.5-1.5B-q4f16_1/Qwen2.5-1.5B.wasm",
+      vram_required_MB: 1800,
+      low_resource_required: false,
+    },
+  },
+  {
+    id: "Mistral-7B-v0.3",
+    name: "Mistral 7B v0.3",
+    description: "Highest quality, local weights, requires more VRAM",
+    config: {
+      model: "/models/Mistral-7B-v0.3-q4f16_1",
+      model_id: "Mistral-7B-v0.3",
+      model_lib: "/models/Mistral-7B-v0.3-q4f16_1/Mistral-7B-v0.3.wasm",
+      vram_required_MB: 4600,
+      low_resource_required: false,
+      required_features: ["shader-f16"],
+    },
+  },
+  // Add Mistral and Gemma here when they are ready/compiled
+];
 
 // Color scale from green (high prob) to red (low prob)
 function getColorForLogprob(logprob: number): string {
@@ -32,110 +76,65 @@ function getColorForLogprob(logprob: number): string {
   return "hsl(" + hue + ", 70%, 85%)";
 }
 
-// Use custom model with prefill_all_logits for efficient input logprobs
-const CUSTOM_MODEL_ID = "TinyLlama-1.1B-Chat-v1.0-q4f16_1-prefill-all-logits";
-
 function LogprobView({
   title,
   result,
+  isLoading,
 }: {
   title: string;
   result: AnalysisResult | null;
+  isLoading: boolean;
 }) {
+  if (isLoading) {
+    return <div style={styles.resultBoxEmpty}>Processing...</div>;
+  }
+
   if (!result) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          padding: 20,
-          background: "#f9f9f9",
-          borderRadius: 8,
-          border: "1px dashed #ccc",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#888",
-        }}
-      >
-        Waiting for analysis...
-      </div>
-    );
+    return <div style={styles.resultBoxEmpty}>Waiting for analysis...</div>;
   }
 
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 20,
-        padding: 15,
-        background: "#fff",
-        borderRadius: 8,
-        border: "1px solid #eee",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-      }}
-    >
-      <h2 style={{ margin: 0, fontSize: 18, color: "#333" }}>{title}</h2>
+    <div style={styles.resultContainer}>
+      <h3 style={{ margin: "0 0 10px 0", fontSize: 16 }}>
+        {title}{" "}
+        <span style={{ fontWeight: "normal", color: "#666" }}>
+          ({result.modelName})
+        </span>
+      </h3>
 
       {result.stats && (
-        <div
-          style={{
-            background: "#e3f2fd",
-            padding: 15,
-            borderRadius: 8,
-            display: "flex",
-            justifyContent: "space-around",
-            alignItems: "center",
-          }}
-        >
+        <div style={styles.statsContainer}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 12, color: "#666" }}>Perplexity</div>
             <div style={{ fontSize: 24, fontWeight: "bold", color: "#2196F3" }}>
-              {result.stats.perplexity.toFixed(2)}
+              {result.stats.perplexity.toFixed(3)}
             </div>
           </div>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 12, color: "#666" }}>Avg Logprob</div>
             <div style={{ fontSize: 18, fontWeight: "bold", color: "#333" }}>
-              {result.stats.avg.toFixed(2)}
+              {result.stats.avg.toFixed(3)}
             </div>
           </div>
         </div>
       )}
 
-      <div
-        style={{
-          background: "#fff",
-          padding: 15,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          lineHeight: 2.2,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 2,
-          color: "#333",
-          maxHeight: 400,
-          overflowY: "auto",
-        }}
-      >
+      <div style={styles.tokensContainer}>
         {result.tokens.map((tl, idx) => (
           <span
             key={idx}
             title={
-              "logprob: " +
+              "token: " +
+              tl.token +
+              "\nlogprob: " +
               tl.logprob.toFixed(4) +
               "\nprob: " +
               (Math.exp(tl.logprob) * 100).toFixed(2) +
               "%"
             }
             style={{
+              ...styles.token,
               background: getColorForLogprob(tl.logprob),
-              padding: "2px 4px",
-              borderRadius: 3,
-              fontSize: 14,
-              cursor: "help",
-              border: "1px solid rgba(0,0,0,0.1)",
             }}
           >
             {tl.token}
@@ -147,61 +146,69 @@ function LogprobView({
 }
 
 function App() {
-  const [status, setStatus] = useState("Idle");
+  const [inputText, setInputText] = useState(EASY_TEXT);
+  const [status, setStatus] = useState("Ready");
   const [progress, setProgress] = useState(0);
   const [engine, setEngine] = useState<webllm.MLCEngineInterface | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [usesEfficientPrefill, setUsesEfficientPrefill] = useState(false);
+  const [currentModelLoaded, setCurrentModelLoaded] = useState<string | null>(
+    null,
+  );
 
-  const [easyResult, setEasyResult] = useState<AnalysisResult | null>(null);
-  const [hardResult, setHardResult] = useState<AnalysisResult | null>(null);
+  const [leftModelId, setLeftModelId] = useState(AVAILABLE_MODELS[0].id);
+  const [rightModelId, setRightModelId] = useState(
+    AVAILABLE_MODELS[1]?.id || AVAILABLE_MODELS[0].id,
+  );
 
-  useEffect(() => {
-    async function init() {
-      setStatus("Loading TinyLlama model with prefill_all_logits...");
-      try {
-        const appConfig = {
-          model_list: [
-            {
-              model:
-                "https://huggingface.co/mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC",
-              model_id: CUSTOM_MODEL_ID,
-              model_lib: "/TinyLlama-1.1B.wasm",
-              vram_required_MB: 700,
-              low_resource_required: true,
-            },
-          ],
-        };
+  const [leftResult, setLeftResult] = useState<AnalysisResult | null>(null);
+  const [rightResult, setRightResult] = useState<AnalysisResult | null>(null);
 
-        const eng = await webllm.CreateMLCEngine(CUSTOM_MODEL_ID, {
-          initProgressCallback: (report) => {
-            setStatus(report.text);
-            setProgress(report.progress * 100);
-            if (report.text.includes("prefill_all_logits")) {
-              setUsesEfficientPrefill(true);
-            }
-          },
-          appConfig: appConfig,
-        });
-        setEngine(eng);
-        setStatus('Ready - Click "Run Comparison" to analyze both texts');
-      } catch (e) {
-        setStatus("Error: " + String(e));
-        console.error(e);
-      }
+  const [processingSide, setProcessingSide] = useState<
+    "left" | "right" | "both" | null
+  >(null);
+
+  const getEngineForModel = async (modelId: string) => {
+    const modelDef = AVAILABLE_MODELS.find((m) => m.id === modelId);
+    if (!modelDef)
+      throw new Error(`Model configuration for ${modelId} not found`);
+
+    if (engine && currentModelLoaded === modelId) {
+      return engine;
     }
-    init();
-  }, []);
 
-  const analyzeText = async (text: string): Promise<AnalysisResult> => {
-    if (!engine) throw new Error("Engine not ready");
+    setStatus(`Initializing ${modelDef.name}...`);
+    // Need to load new model
+    let eng = engine;
+    if (!eng) {
+      // First time
+      eng = await webllm.CreateMLCEngine(modelDef.config.model_id, {
+        appConfig: { model_list: [modelDef.config] },
+        initProgressCallback: (report) => {
+          setStatus(report.text);
+          setProgress(report.progress * 100);
+        },
+      });
+      setEngine(eng);
+    } else {
+      // Reload
+      eng.setAppConfig({ model_list: [modelDef.config] });
+      await eng.reload(modelDef.config.model_id);
+    }
 
-    const messages: webllm.ChatCompletionMessageParam[] = [
-      { role: "user", content: text },
-    ];
+    setCurrentModelLoaded(modelId);
+    return eng;
+  };
 
-    const reply = await engine.chat.completions.create({
-      messages,
+  const analyze = async (
+    targetText: string,
+    modelId: string,
+  ): Promise<AnalysisResult> => {
+    const eng = await getEngineForModel(modelId);
+    const modelDef = AVAILABLE_MODELS.find((m) => m.id === modelId)!;
+
+    setStatus(`Running inference on ${modelDef.name}...`);
+
+    const reply = await eng.chat.completions.create({
+      messages: [{ role: "user", content: targetText }],
       max_tokens: 1,
       return_input_logprobs: true,
       logprobs: true,
@@ -223,194 +230,349 @@ function App() {
             logprob: inputLogprobs[i],
           });
         }
-      } else {
-        for (let i = 0; i < inputLogprobs.length; i++) {
-          tokens.push({
-            token: "[" + i + "]",
-            logprob: inputLogprobs[i],
-          });
-        }
       }
 
-      const logprobValues = inputLogprobs.filter(
-        (lp: unknown) => typeof lp === "number" && !isNaN(lp as number),
+      const validLogprobs = inputLogprobs.filter(
+        (lp) => typeof lp === "number" && !isNaN(lp),
       ) as number[];
-
       let stats = null;
-      if (logprobValues.length > 0) {
+      if (validLogprobs.length > 0) {
         const avg =
-          logprobValues.reduce((a, b) => a + b, 0) / logprobValues.length;
+          validLogprobs.reduce((a, b) => a + b, 0) / validLogprobs.length;
         stats = {
-          min: Math.min(...logprobValues),
-          max: Math.max(...logprobValues),
+          min: Math.min(...validLogprobs),
+          max: Math.max(...validLogprobs),
           avg: avg,
           perplexity: Math.exp(-avg),
         };
       }
 
-      return { text, tokens, stats };
+      return { text: targetText, tokens, stats, modelName: modelDef.name };
     }
-    throw new Error("No logprobs returned");
+    throw new Error("No logprobs returned from model");
   };
 
-  const runComparison = useCallback(async () => {
-    if (!engine) return;
-
-    setIsProcessing(true);
-    setEasyResult(null);
-    setHardResult(null);
-
+  const runLeft = async () => {
+    if (processingSide) return;
+    setProcessingSide("left");
     try {
-      setStatus("Analyzing Easy Text...");
-      const easy = await analyzeText(EASY_TEXT);
-      setEasyResult(easy);
-
-      // Small delay to let UI update
-      await new Promise((r) => setTimeout(r, 100));
-
-      setStatus("Analyzing Difficult Text...");
-      const hard = await analyzeText(DIFFICULT_TEXT);
-      setHardResult(hard);
-
-      setStatus("Comparison Complete!");
+      const res = await analyze(inputText, leftModelId);
+      setLeftResult(res);
+      setStatus("Analysis Complete");
     } catch (e) {
-      setStatus("Error: " + String(e));
+      setStatus(`Error: ${e}`);
       console.error(e);
     } finally {
-      setIsProcessing(false);
+      setProcessingSide(null);
     }
-  }, [engine]);
+  };
+
+  const runRight = async () => {
+    if (processingSide) return;
+    setProcessingSide("right");
+    try {
+      const res = await analyze(inputText, rightModelId);
+      setRightResult(res);
+      setStatus("Analysis Complete");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+      console.error(e);
+    } finally {
+      setProcessingSide(null);
+    }
+  };
+
+  const runBoth = async () => {
+    if (processingSide) return;
+    setProcessingSide("both");
+    try {
+      // Run sequentially to manage VRAM/Engine state
+      const resLeft = await analyze(inputText, leftModelId);
+      setLeftResult(resLeft);
+
+      await new Promise((r) => setTimeout(r, 100)); // UI Breath
+
+      const resRight = await analyze(inputText, rightModelId);
+      setRightResult(resRight);
+
+      setStatus("Comparison Complete");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+      console.error(e);
+    } finally {
+      setProcessingSide(null);
+    }
+  };
 
   return (
-    <div
-      style={{
-        padding: 20,
-        maxWidth: 1400,
-        margin: "0 auto",
-        fontFamily: "system-ui",
-        color: "#333",
-        backgroundColor: "#fff",
-        minHeight: "100vh",
-      }}
-    >
-      <div style={{ textAlign: "center", marginBottom: 30 }}>
-        <h1>WebLLM Logprob Discovery</h1>
-        <p style={{ color: "#666" }}>
-          Side-by-side comparison of model perplexity on easy vs. difficult
-          text.
-          {usesEfficientPrefill && (
-            <span
-              style={{
-                marginLeft: 10,
-                padding: "2px 8px",
-                background: "#4CAF50",
-                color: "white",
-                borderRadius: 4,
-                fontSize: 12,
-              }}
-            >
-              ⚡ Using prefill_all_logits
-            </span>
-          )}
-        </p>
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <h1>WebLLM Model Comparison</h1>
+        <p>Compare perplexity and logprobs across different models.</p>
 
-        <div
-          style={{
-            background: "#f5f5f5",
-            padding: 10,
-            borderRadius: 8,
-            marginBottom: 20,
-            maxWidth: 600,
-            margin: "0 auto 20px auto",
-            color: "#333",
-          }}
-        >
-          <p style={{ margin: 0, fontSize: 14 }}>
-            <strong>Status:</strong> {status}
-          </p>
+        <div style={styles.statusBox}>
+          <strong>Status:</strong> {status}
           {progress > 0 && progress < 100 && (
-            <div
-              style={{
-                marginTop: 8,
-                background: "#ddd",
-                borderRadius: 4,
-                overflow: "hidden",
-                height: 4,
-              }}
-            >
-              <div
-                style={{
-                  width: progress + "%",
-                  height: "100%",
-                  background: "#4CAF50",
-                  transition: "width 0.3s",
-                }}
-              />
+            <div style={styles.progressBar}>
+              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
             </div>
           )}
         </div>
+      </header>
 
-        <button
-          onClick={runComparison}
-          disabled={!engine || isProcessing}
-          style={{
-            padding: "12px 32px",
-            fontSize: 18,
-            background: engine && !isProcessing ? "#2196F3" : "#ccc",
-            color: "white",
-            border: "none",
-            borderRadius: 6,
-            cursor: engine && !isProcessing ? "pointer" : "not-allowed",
-            boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-          }}
-        >
-          {isProcessing ? "Running Analysis..." : "Run Comparison"}
-        </button>
+      <div style={styles.controls}>
+        <div style={styles.controlGroup}>
+          <label>Input Text:</label>
+          <div style={styles.presets}>
+            <button
+              style={styles.tinyBtn}
+              onClick={() => setInputText(EASY_TEXT)}
+            >
+              Populate Easy
+            </button>
+            <button
+              style={styles.tinyBtn}
+              onClick={() => setInputText(DIFFICULT_TEXT)}
+            >
+              Populate Difficult
+            </button>
+          </div>
+          <textarea
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            style={styles.textarea}
+            rows={4}
+          />
+        </div>
+
+        <div style={styles.buttonGroup}>
+          <button
+            style={styles.mainBtn}
+            onClick={runBoth}
+            disabled={!!processingSide}
+          >
+            {processingSide === "both"
+              ? "Running Model 2..."
+              : "Run Both & Compare"}
+          </button>
+        </div>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 20,
-          flexDirection: "row",
-          alignItems: "flex-start",
-        }}
-      >
-        <LogprobView title="Easy Text (Predictable)" result={easyResult} />
-        <LogprobView title="Difficult Text (Abstract)" result={hardResult} />
-      </div>
+      <div style={styles.comparisonGrid}>
+        {/* Left Panel */}
+        <div style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <select
+              value={leftModelId}
+              onChange={(e) => setLeftModelId(e.target.value)}
+              style={styles.select}
+              disabled={!!processingSide}
+            >
+              {AVAILABLE_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={runLeft}
+              disabled={!!processingSide}
+              style={styles.runBtn}
+            >
+              Run
+            </button>
+          </div>
+          <LogprobView
+            title="Result A"
+            result={leftResult}
+            isLoading={processingSide === "left" || processingSide === "both"}
+          />
+        </div>
 
-      <div
-        style={{
-          marginTop: 40,
-          padding: 20,
-          background: "#fff3e0",
-          borderRadius: 8,
-          color: "#333",
-          fontSize: 14,
-        }}
-      >
-        <h4 style={{ margin: "0 0 10px 0" }}>What to look for:</h4>
-        <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.6 }}>
-          <li>
-            <strong>Perplexity:</strong> The "Easy Text" should have a
-            significantly lower perplexity score (closer to 1.0) than the
-            "Difficult Text".
-          </li>
-          <li>
-            <strong>Visual Density:</strong> The "Easy Text" should be mostly
-            green (high probability tokens). The "Difficult Text" should have
-            more orange/red tokens (unexpected words).
-          </li>
-          <li>
-            <strong>Tokenization:</strong> Notice how complex words in the
-            difficult text might be split into multiple tokens, each with
-            potentially lower probability.
-          </li>
-        </ul>
+        {/* Right Panel */}
+        <div style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <select
+              value={rightModelId}
+              onChange={(e) => setRightModelId(e.target.value)}
+              style={styles.select}
+              disabled={!!processingSide}
+            >
+              {AVAILABLE_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={runRight}
+              disabled={!!processingSide}
+              style={styles.runBtn}
+            >
+              Run
+            </button>
+          </div>
+          <LogprobView
+            title="Result B"
+            result={rightResult}
+            isLoading={processingSide === "right"}
+          />
+        </div>
       </div>
     </div>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    padding: 20,
+    maxWidth: 1400,
+    margin: "0 auto",
+    fontFamily: "system-ui, sans-serif",
+    color: "#333",
+  },
+  header: {
+    textAlign: "center",
+    marginBottom: 30,
+  },
+  statusBox: {
+    background: "#f0f0f0",
+    padding: 10,
+    borderRadius: 6,
+    maxWidth: 600,
+    margin: "15px auto",
+    fontSize: 14,
+  },
+  progressBar: {
+    height: 4,
+    background: "#ddd",
+    borderRadius: 2,
+    marginTop: 8,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    background: "#2196F3",
+    transition: "width 0.2s",
+  },
+  controls: {
+    background: "#fff",
+    padding: 20,
+    borderRadius: 8,
+    border: "1px solid #eee",
+    marginBottom: 30,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+  },
+  controlGroup: {
+    marginBottom: 15,
+  },
+  textarea: {
+    width: "100%",
+    padding: 10,
+    borderRadius: 6,
+    border: "1px solid #ddd",
+    fontSize: 14,
+    marginTop: 5,
+    fontFamily: "inherit",
+  },
+  presets: {
+    marginBottom: 5,
+    display: "flex",
+    gap: 10,
+  },
+  tinyBtn: {
+    fontSize: 12,
+    padding: "4px 8px",
+    background: "#eee",
+    border: "none",
+    borderRadius: 4,
+    cursor: "pointer",
+  },
+  buttonGroup: {
+    textAlign: "center",
+  },
+  mainBtn: {
+    padding: "12px 30px",
+    fontSize: 16,
+    background: "#2196F3",
+    color: "white",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+  comparisonGrid: {
+    display: "flex",
+    gap: 20,
+  },
+  panel: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 15,
+  },
+  panelHeader: {
+    display: "flex",
+    gap: 10,
+  },
+  select: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 6,
+    border: "1px solid #ddd",
+    fontSize: 14,
+  },
+  runBtn: {
+    padding: "0 20px",
+    background: "#666",
+    color: "white",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+  },
+  resultBoxEmpty: {
+    padding: 40,
+    background: "#f9f9f9",
+    borderRadius: 8,
+    border: "1px dashed #ccc",
+    textAlign: "center",
+    color: "#888",
+    height: 300,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resultContainer: {
+    background: "#fff",
+    borderRadius: 8,
+    border: "1px solid #ddd",
+    padding: 15,
+    boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+  },
+  statsContainer: {
+    display: "flex",
+    justifyContent: "space-around",
+    background: "#e3f2fd",
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  tokensContainer: {
+    lineHeight: 2.2,
+    maxHeight: 400,
+    overflowY: "auto",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 4,
+    padding: 4,
+  },
+  token: {
+    padding: "2px 5px",
+    borderRadius: 4,
+    fontSize: 14,
+    border: "1px solid rgba(0,0,0,0.05)",
+    cursor: "help",
+  },
+};
 
 export default App;
