@@ -321,7 +321,9 @@ gallery/how_to/work_with_microtvm/micro_tvmc.py
 dist
 tvm_home
 node_modules
-lib
+# Allow lib folder for git-installability
+# lib
+
 .parcel-cache
 
 **/.next
